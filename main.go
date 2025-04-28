@@ -19,13 +19,13 @@ type Repository struct {
 }
 
 type WorkflowRun struct {
-	ID          int64     `json:"id"`
-	Name        string    `json:"name"`
-	Status      string    `json:"status"`
-	Conclusion  string    `json:"conclusion"`
-	RunNumber   int       `json:"run_number"`
-	StartedAt   time.Time `json:"run_started_at"`
-	CompletedAt time.Time `json:"updated_at"`
+	ID         int64     `json:"id"`
+	Name       string    `json:"name"`
+	Status     string    `json:"status"`
+	Conclusion string    `json:"conclusion"`
+	RunNumber  int       `json:"run_number"`
+	StartedAt  time.Time `json:"run_started_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type Step struct {
@@ -96,7 +96,7 @@ func webhookHandler(c *gin.Context) {
 		return
 	}
 
-	fmt.Println("Raw Payload: ", string(body))
+	//fmt.Println("Raw Payload: ", string(body))
 	var payload GitHubWebhookPayload
 	//var payload2 GitHubWebhookPayload
 
@@ -105,6 +105,53 @@ func webhookHandler(c *gin.Context) {
 		fmt.Println("\n\n error in unmarshal json : ", err)
 	}
 	fmt.Println("payload: ", payload)
+
+	if payload.Action == "queued" {
+		fmt.Printf(" Action is in Queued :  workflow_job.id  %v , run_id %v ,status %s ,name %s ,Repo name %s",
+			payload.WorkflowJob.ID,
+			payload.WorkflowJob.RunID,
+			payload.WorkflowJob.Status,
+			payload.WorkflowJob.Name,
+			payload.Repository.FullName,
+		)
+	}
+	if payload.Action == "in_progress" {
+		fmt.Printf(" Action is in in_progress :  workflow_job.id  %v , run_id %v ,status %s ,name %s ,Repo name %s",
+			payload.WorkflowJob.ID,
+			payload.WorkflowJob.RunID,
+			//payload.WorkflowJob.Status,
+			payload.WorkflowJob.Name,
+			payload.Repository.FullName,
+		)
+		for _, step := range payload.WorkflowJob.Steps {
+			fmt.Printf("  Step: %s | Status: %s | Number: %d\n",
+				step.Name, step.Status, step.Number)
+		}
+	}
+	if payload.Action == "completed" {
+		fmt.Printf(" Action is in completed :  workflow_job.id  %v , run_id %v ,status %s ,name %s ,Repo name %s",
+			payload.WorkflowJob.ID,
+			payload.WorkflowJob.RunID,
+			payload.WorkflowJob.Name,
+			payload.Repository.FullName,
+		)
+		for _, step := range payload.WorkflowJob.Steps {
+			fmt.Printf("  Step: %s | Status: %s | Conclusion %s | started_at %v | Completed_at: %d\n",
+				step.Name, step.Status, step.Conclusion, step.StartedAt, step.CompletedAt)
+		}
+
+		fmt.Printf("\nWorkflowRun Job ID: %d, Run ID: %d, Name: %s, Status: %s, Conclusion %s, StartAt %s UpdatedAt %s Repo: %s\n",
+			payload.WorkflowRun.ID,
+			payload.WorkflowRun.RunNumber,
+			payload.WorkflowRun.Name,
+			payload.WorkflowRun.Status,
+			payload.WorkflowRun.Conclusion,
+			payload.WorkflowRun.StartedAt,
+			payload.WorkflowRun.UpdatedAt,
+			payload.Repository.FullName,
+		)
+	}
+
 	if payload.WorkflowJob.ID != 0 {
 		fmt.Printf("\nJob ID: %d, Run ID: %d, Name: %s, Status: %s, Repo: %s\n",
 			payload.WorkflowJob.ID,
@@ -120,6 +167,25 @@ func webhookHandler(c *gin.Context) {
 					step.Name, step.Status, step.Conclusion, step.Number)
 			}
 		}
+	}
+	if payload.WorkflowRun.ID != 0 {
+		fmt.Printf("\nJob ID: %d, Run ID: %d, Name: %s, Status: %s, Conclusion %s, StartAt %s UpdatedAt %s Repo: %s\n",
+			payload.WorkflowRun.ID,
+			payload.WorkflowRun.RunNumber,
+			payload.WorkflowRun.Name,
+			payload.WorkflowRun.Status,
+			payload.WorkflowRun.Conclusion,
+			payload.WorkflowRun.StartedAt,
+			payload.WorkflowRun.UpdatedAt,
+			payload.Repository.FullName,
+		)
+
+		//if len(payload.WorkflowJob.Steps) > 0 {
+		//	for _, step := range payload.WorkflowJob.Steps {
+		//		fmt.Printf("  Step: %s | Status: %s | Conclusion: %s | Number: %d\n",
+		//			step.Name, step.Status, step.Conclusion, step.Number)
+		//	}
+		//}
 	}
 	//fmt.Println("\n\n Payload2 unmarshal : payload2.Action : ", payload2.Action, " payload2.WorkflowRun : ", payload2.WorkflowRun, " payload2.WorkflowJob : ", payload2.WorkflowJob)
 	// Decode the incoming JSON payload
