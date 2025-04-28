@@ -106,7 +106,7 @@ func webhookHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
 		return
 	}
-	fmt.Println("payload: ", payload)
+	//fmt.Println("payload: ", payload)
 
 	if payload.Action == "queued" {
 		fmt.Printf(" Action is in Queued :  workflow_job.id  %v , run_id %v ,status %s ,name %s ,Repo name %v",
@@ -182,42 +182,38 @@ func webhookHandler(c *gin.Context) {
 			payload.Repository.FullName,
 		)
 
-		//if len(payload.WorkflowJob.Steps) > 0 {
-		//	for _, step := range payload.WorkflowJob.Steps {
-		//		fmt.Printf("  Step: %s | Status: %s | Conclusion: %s | Number: %d\n",
-		//			step.Name, step.Status, step.Conclusion, step.Number)
+		workflowName := payload.WorkflowRun.Name
+
+		mu.Lock()
+		defer mu.Unlock()
+		//fmt.Println("payload : ", payload)
+		switch payload.WorkflowRun.Status {
+		case "in_progress":
+			// Workflow started running
+			runningGauge.WithLabelValues(workflowName).Inc()
+
+		case "completed":
+			// Workflow completed: Decrement running
+			runningGauge.WithLabelValues(workflowName).Dec()
+
+			if payload.WorkflowRun.Conclusion == "success" {
+				successCounter.WithLabelValues(workflowName).Inc()
+			} else if payload.WorkflowRun.Conclusion == "failure" {
+				failureCounter.WithLabelValues(workflowName).Inc()
+			}
+		}
+		//switch payload.Action {
+		//case "requested", "in_progress":
+		//	runningGauge.WithLabelValues(workflowName).Inc()
+		//case "completed":
+		//	runningGauge.WithLabelValues(workflowName).Dec()
+		//	if payload.WorkflowRun.Conclusion == "success" {
+		//		successCounter.WithLabelValues(workflowName).Inc()
+		//	} else if payload.WorkflowRun.Conclusion == "failure" {
+		//		failureCounter.WithLabelValues(workflowName).Inc()
 		//	}
 		//}
 	}
-	//fmt.Println("\n\n Payload2 unmarshal : payload2.Action : ", payload2.Action, " payload2.WorkflowRun : ", payload2.WorkflowRun, " payload2.WorkflowJob : ", payload2.WorkflowJob)
-	// Decode the incoming JSON payload
-	//if err := c.ShouldBindJSON(&payload); err != nil {
-	//	fmt.Println("error in payload binding: ", err)
-	//	c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payload"})
-	//	return
-	//}
-	fmt.Println("\n\npayload : ", payload)
-	workflowName := payload.WorkflowRun.Name
-
-	mu.Lock()
-	defer mu.Unlock()
-	fmt.Println("payload : ", payload)
-	switch payload.WorkflowRun.Status {
-	case "in_progress":
-		// Workflow started running
-		runningGauge.WithLabelValues(workflowName).Inc()
-
-	case "completed":
-		// Workflow completed: Decrement running
-		runningGauge.WithLabelValues(workflowName).Dec()
-
-		if payload.WorkflowRun.Conclusion == "success" {
-			successCounter.WithLabelValues(workflowName).Inc()
-		} else if payload.WorkflowRun.Conclusion == "failure" {
-			failureCounter.WithLabelValues(workflowName).Inc()
-		}
-	}
-
 	c.String(http.StatusOK, "Event processed")
 }
 
