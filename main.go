@@ -103,11 +103,13 @@ func webhookHandler(c *gin.Context) {
 	err = json.Unmarshal(body, &payload)
 	if err != nil {
 		fmt.Println("\n\n error in unmarshal json : ", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
 	}
 	fmt.Println("payload: ", payload)
 
 	if payload.Action == "queued" {
-		fmt.Printf(" Action is in Queued :  workflow_job.id  %v , run_id %v ,status %s ,name %s ,Repo name %s",
+		fmt.Printf(" Action is in Queued :  workflow_job.id  %v , run_id %v ,status %s ,name %s ,Repo name %v",
 			payload.WorkflowJob.ID,
 			payload.WorkflowJob.RunID,
 			payload.WorkflowJob.Status,
@@ -116,7 +118,7 @@ func webhookHandler(c *gin.Context) {
 		)
 	}
 	if payload.Action == "in_progress" {
-		fmt.Printf(" Action is in in_progress :  workflow_job.id  %v , run_id %v ,status %s ,name %s ,Repo name %s",
+		fmt.Printf(" Action is in in_progress :  workflow_job.id  %v , run_id %v ,name %s ,Repo name %s",
 			payload.WorkflowJob.ID,
 			payload.WorkflowJob.RunID,
 			//payload.WorkflowJob.Status,
@@ -189,11 +191,11 @@ func webhookHandler(c *gin.Context) {
 	}
 	//fmt.Println("\n\n Payload2 unmarshal : payload2.Action : ", payload2.Action, " payload2.WorkflowRun : ", payload2.WorkflowRun, " payload2.WorkflowJob : ", payload2.WorkflowJob)
 	// Decode the incoming JSON payload
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		fmt.Println("error in payload binding: ", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payload"})
-		return
-	}
+	//if err := c.ShouldBindJSON(&payload); err != nil {
+	//	fmt.Println("error in payload binding: ", err)
+	//	c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payload"})
+	//	return
+	//}
 	fmt.Println("\n\npayload : ", payload)
 	workflowName := payload.WorkflowRun.Name
 
