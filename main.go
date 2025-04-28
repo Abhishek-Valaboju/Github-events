@@ -56,36 +56,120 @@ type GitHubWebhookPayload struct {
 }
 
 // Prometheus metrics
+// var (
+//
+//	runningGauge = prometheus.NewGaugeVec(
+//		prometheus.GaugeOpts{
+//			Name: "github_actions_running_total",
+//			Help: "Number of workflows currently running",
+//		},
+//		[]string{"workflow_name"},
+//	)
+//	successCounter = prometheus.NewCounterVec(
+//		prometheus.CounterOpts{
+//			Name: "github_actions_success_total",
+//			Help: "Total number of successful workflow runs",
+//		},
+//		[]string{"workflow_name"},
+//	)
+//	failureCounter = prometheus.NewCounterVec(
+//		prometheus.CounterOpts{
+//			Name: "github_actions_failure_total",
+//			Help: "Total number of failed workflow runs",
+//		},
+//		[]string{"workflow_name"},
+//	)
+//
+//
+//	mu sync.Mutex // To safely update metrics
+//
+// )
 var (
-	runningGauge = prometheus.NewGaugeVec(
+	workflowRunTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "github_actions_workflow_run_total",
+			Help: "Total number of workflow runs per repository and status",
+		},
+		[]string{"repository", "workflow", "status"},
+	)
+
+	workflowDurationSeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "github_actions_workflow_duration_seconds",
+			Help:    "Duration of completed workflow runs",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"repository", "workflow", "status"},
+	)
+
+	jobRunTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "github_actions_job_run_total",
+			Help: "Total number of jobs run within workflows",
+		},
+		[]string{"repository", "workflow", "job", "status"},
+	)
+
+	jobDurationSeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "github_actions_job_duration_seconds",
+			Help:    "Duration of each job in seconds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"repository", "workflow", "job", "status"},
+	)
+
+	stepRunTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "github_actions_step_run_total",
+			Help: "Total number of steps executed",
+		},
+		[]string{"repository", "workflow", "job", "step", "status"},
+	)
+
+	stepDurationSeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "github_actions_step_duration_seconds",
+			Help:    "Time taken by each individual step",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"repository", "workflow", "job", "step", "status"},
+	)
+
+	queuedDurationSeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "github_actions_queued_duration_seconds",
+			Help:    "Time a workflow spent in queue before starting",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"repository", "workflow"},
+	)
+
+	runnersBusy = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "github_actions_running_total",
-			Help: "Number of workflows currently running",
+			Name: "github_actions_runners_busy",
+			Help: "Indicates whether a runner is currently executing a job (1 = busy, 0 = idle)",
 		},
-		[]string{"workflow_name"},
+		[]string{"repository", "runner_name"},
 	)
-	successCounter = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "github_actions_success_total",
-			Help: "Total number of successful workflow runs",
-		},
-		[]string{"workflow_name"},
-	)
-	failureCounter = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "github_actions_failure_total",
-			Help: "Total number of failed workflow runs",
-		},
-		[]string{"workflow_name"},
-	)
-	mu sync.Mutex // To safely update metrics
+	mu sync.Mutex
 )
 
 func init() {
 	// Register Prometheus metrics
-	prometheus.MustRegister(runningGauge)
-	prometheus.MustRegister(successCounter)
-	prometheus.MustRegister(failureCounter)
+	//prometheus.MustRegister(runningGauge)
+	//prometheus.MustRegister(successCounter)
+	//prometheus.MustRegister(failureCounter)
+	prometheus.MustRegister(
+		workflowRunTotal,
+		workflowDurationSeconds,
+		jobRunTotal,
+		jobDurationSeconds,
+		stepRunTotal,
+		stepDurationSeconds,
+		queuedDurationSeconds,
+		runnersBusy,
+	)
 }
 
 func webhookHandler(c *gin.Context) {
@@ -169,6 +253,32 @@ func webhookHandler(c *gin.Context) {
 					step.Name, step.Status, step.Conclusion, step.Number)
 			}
 		}
+
+		job := payload.WorkflowJob
+		jobName := job.Name
+		workflow := jobName // Approximate workflow name
+		status := job.Conclusion
+
+		if payload.Action == "completed" {
+			jobRunTotal.WithLabelValues(payload.Repository.FullName, workflow, jobName, status).Inc()
+
+			duration := job.CompletedAt.Sub(job.StartedAt).Seconds()
+			jobDurationSeconds.WithLabelValues(payload.Repository.FullName, workflow, jobName, status).Observe(duration)
+		}
+
+		if payload.Action == "in_progress" {
+			runnersBusy.WithLabelValues(payload.Repository.FullName, jobName).Set(1)
+		} else if payload.Action == "completed" {
+			runnersBusy.WithLabelValues(payload.Repository.FullName, jobName).Set(0)
+		}
+
+		for _, step := range job.Steps {
+			stepRunTotal.WithLabelValues(payload.Repository.FullName, workflow, jobName, step.Name, step.Status).Inc()
+			if payload.Action == "completed" {
+				duration := step.CompletedAt.Sub(step.StartedAt).Seconds()
+				stepDurationSeconds.WithLabelValues(payload.Repository.FullName, workflow, jobName, step.Name, step.Status).Observe(duration)
+			}
+		}
 	}
 	if payload.WorkflowRun.ID != 0 {
 		fmt.Printf("\nJob ID: %d, Run ID: %d, Name: %s, Status: %s, Conclusion %s, StartAt %s UpdatedAt %s Repo: %s\n",
@@ -182,26 +292,26 @@ func webhookHandler(c *gin.Context) {
 			payload.Repository.FullName,
 		)
 
-		workflowName := payload.WorkflowRun.Name
+		//workflowName := payload.WorkflowRun.Name
 
 		mu.Lock()
 		defer mu.Unlock()
 		//fmt.Println("payload : ", payload)
-		switch payload.WorkflowRun.Status {
-		case "in_progress":
-			// Workflow started running
-			runningGauge.WithLabelValues(workflowName).Inc()
-
-		case "completed":
-			// Workflow completed: Decrement running
-			runningGauge.WithLabelValues(workflowName).Dec()
-
-			if payload.WorkflowRun.Conclusion == "success" {
-				successCounter.WithLabelValues(workflowName).Inc()
-			} else if payload.WorkflowRun.Conclusion == "failure" {
-				failureCounter.WithLabelValues(workflowName).Inc()
-			}
-		}
+		//switch payload.WorkflowRun.Status {
+		//case "in_progress":
+		//	// Workflow started running
+		//	runningGauge.WithLabelValues(workflowName).Inc()
+		//
+		//case "completed":
+		//	// Workflow completed: Decrement running
+		//	runningGauge.WithLabelValues(workflowName).Dec()
+		//
+		//	if payload.WorkflowRun.Conclusion == "success" {
+		//		successCounter.WithLabelValues(workflowName).Inc()
+		//	} else if payload.WorkflowRun.Conclusion == "failure" {
+		//		failureCounter.WithLabelValues(workflowName).Inc()
+		//	}
+		//}
 		//switch payload.Action {
 		//case "requested", "in_progress":
 		//	runningGauge.WithLabelValues(workflowName).Inc()
@@ -213,6 +323,16 @@ func webhookHandler(c *gin.Context) {
 		//		failureCounter.WithLabelValues(workflowName).Inc()
 		//	}
 		//}
+		run := payload.WorkflowRun
+		workflow := run.Name
+		status := run.Conclusion
+
+		if payload.Action == "completed" {
+			workflowRunTotal.WithLabelValues(payload.Repository.FullName, workflow, status).Inc()
+
+			duration := run.UpdatedAt.Sub(run.StartedAt).Seconds()
+			workflowDurationSeconds.WithLabelValues(payload.Repository.FullName, workflow, status).Observe(duration)
+		}
 	}
 	c.String(http.StatusOK, "Event processed")
 }
