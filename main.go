@@ -87,7 +87,7 @@ func webhookHandler(c *gin.Context) {
 
 	err = json.Unmarshal(body, &payload2)
 	if err != nil {
-		fmt.Println("\n\n error in unmarshal : ", err)
+		fmt.Println("\n\n error in unmarshal json : ", err)
 	}
 	fmt.Println("\n\n Payload2 unmarshal : payload2.Action : ", payload2.Action, " payload2.WorkflowRun : ", payload2.WorkflowRun, " payload2.WorkflowJob : ", payload2.WorkflowJob)
 	// Decode the incoming JSON payload
