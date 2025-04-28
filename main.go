@@ -14,30 +14,45 @@ import (
 )
 
 // Structs to decode GitHub webhook payload
+type Repository struct {
+	FullName string `json:"full_name"`
+}
+
 type WorkflowRun struct {
 	ID          int64     `json:"id"`
 	Name        string    `json:"name"`
 	Status      string    `json:"status"`
 	Conclusion  string    `json:"conclusion"`
 	RunNumber   int       `json:"run_number"`
-	StartedAt   time.Time `json:"started_at"`
-	CompletedAt time.Time `json:"completed_at"`
+	StartedAt   time.Time `json:"run_started_at"`
+	CompletedAt time.Time `json:"updated_at"`
+}
+
+type Step struct {
+	Name        string    `json:"name"`
+	Status      string    `json:"status"`
+	Conclusion  string    `json:"conclusion,omitempty"`
+	Number      int       `json:"number"`
+	StartedAt   time.Time `json:"started_at,omitempty"`
+	CompletedAt time.Time `json:"completed_at,omitempty"`
 }
 
 type WorkflowJob struct {
 	ID          int64     `json:"id"`
+	RunID       int64     `json:"run_id"`
 	Name        string    `json:"name"`
 	Status      string    `json:"status"`
-	Conclusion  string    `json:"conclusion"`
-	RunNumber   int       `json:"run_number"`
-	StartedAt   time.Time `json:"started_at"`
-	CompletedAt time.Time `json:"completed_at"`
+	Conclusion  string    `json:"conclusion,omitempty"`
+	StartedAt   time.Time `json:"started_at,omitempty"`
+	CompletedAt time.Time `json:"completed_at,omitempty"`
+	Steps       []Step    `json:"steps,omitempty"`
 }
 
 type GitHubWebhookPayload struct {
 	Action      string      `json:"action"`
 	WorkflowRun WorkflowRun `json:"workflow_run,omitempty"`
 	WorkflowJob WorkflowJob `json:"workflow_job,omitempty"`
+	Repository  Repository  `json:"repository,omitempty"`
 }
 
 // Prometheus metrics
@@ -83,13 +98,30 @@ func webhookHandler(c *gin.Context) {
 
 	fmt.Println("Raw Payload: ", string(body))
 	var payload GitHubWebhookPayload
-	var payload2 GitHubWebhookPayload
+	//var payload2 GitHubWebhookPayload
 
-	err = json.Unmarshal(body, &payload2)
+	err = json.Unmarshal(body, &payload)
 	if err != nil {
 		fmt.Println("\n\n error in unmarshal json : ", err)
 	}
-	fmt.Println("\n\n Payload2 unmarshal : payload2.Action : ", payload2.Action, " payload2.WorkflowRun : ", payload2.WorkflowRun, " payload2.WorkflowJob : ", payload2.WorkflowJob)
+	fmt.Println("payload: ", payload)
+	if payload.WorkflowJob.ID != 0 {
+		fmt.Printf("\nJob ID: %d, Run ID: %d, Name: %s, Status: %s, Repo: %s\n",
+			payload.WorkflowJob.ID,
+			payload.WorkflowJob.RunID,
+			payload.WorkflowJob.Name,
+			payload.WorkflowJob.Status,
+			payload.Repository.FullName,
+		)
+
+		if len(payload.WorkflowJob.Steps) > 0 {
+			for _, step := range payload.WorkflowJob.Steps {
+				fmt.Printf("  Step: %s | Status: %s | Conclusion: %s | Number: %d\n",
+					step.Name, step.Status, step.Conclusion, step.Number)
+			}
+		}
+	}
+	//fmt.Println("\n\n Payload2 unmarshal : payload2.Action : ", payload2.Action, " payload2.WorkflowRun : ", payload2.WorkflowRun, " payload2.WorkflowJob : ", payload2.WorkflowJob)
 	// Decode the incoming JSON payload
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		fmt.Println("error in payload binding: ", err)
