@@ -331,6 +331,7 @@ func webhookHandler(c *gin.Context) {
 			workflowRunTotal.WithLabelValues(payload.Repository.FullName, workflow, status).Inc()
 
 			duration := run.UpdatedAt.Sub(run.StartedAt).Seconds()
+			fmt.Println("duration : ", duration)
 			workflowDurationSeconds.WithLabelValues(payload.Repository.FullName, workflow, status).Observe(duration)
 		}
 	}
