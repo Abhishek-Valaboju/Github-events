@@ -1,0 +1,50 @@
+name: Run on schedule
+
+on:
+  schedule:
+    - cron: '0 * * * *' # or daily if preferred
+
+jobs:
+  sleep-on-schedule:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Read values from config file
+        id: read_config
+        run: |
+          sleep_value=$(grep '^sleep=' parameters.txt | cut -d '=' -f2)
+          echo "sleep=$sleep_value"
+          echo "sleep_value=$sleep_value" >> $GITHUB_OUTPUT
+
+      - name: Sleep for the configured time
+        run: sleep ${{ steps.read_config.outputs.sleep_value }}
+
+  echo-on-schedule:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Read values from config file
+        id: read_config
+        run: |
+          hello_value=$(grep '^hello=' parameters.txt | cut -d '=' -f2)
+          class_value=$(grep '^class=' class.txt      | cut -d '=' -f2)
+          name_value=$(grep '^name='   name.txt       | cut -d '=' -f2)
+          echo "name=$name_value"
+          echo "hello=$hello_value"
+          echo "class=$class_value"
+          echo "name_value=$name_value" >> $GITHUB_OUTPUT
+          echo "hello_value=$hello_value" >> $GITHUB_OUTPUT
+          echo "class_value=$class_value" >> $GITHUB_OUTPUT
+
+      - name: Print hello world
+        run: |
+          class=${{ steps.read_config.outputs.class_value }}
+          name=${{ steps.read_config.outputs.name_value }}
+          for i in $(seq 1 ${{ steps.read_config.outputs.hello_value }})
+          do
+            echo "hello $name in class $class"
+          done

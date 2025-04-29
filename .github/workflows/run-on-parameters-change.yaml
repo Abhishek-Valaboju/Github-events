@@ -1,0 +1,33 @@
+name: Run on Parameters Change
+
+on:
+  push:
+    paths:
+      - parameters.txt
+
+jobs:
+  config-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Read values from config file
+        id: read_config
+        run: |
+          sleep_value=$(grep '^sleep=' parameters.txt | cut -d '=' -f2)
+          hello_value=$(grep '^hello=' parameters.txt | cut -d '=' -f2)
+          echo "sleep=$sleep_value"
+          echo "hello=$hello_value"
+          echo "sleep_value=$sleep_value" >> $GITHUB_OUTPUT
+          echo "hello_value=$hello_value" >> $GITHUB_OUTPUT
+
+      - name: Sleep for the configured time
+        run: sleep ${{ steps.read_config.outputs.sleep_value }}
+
+      - name: Print hello world
+        run: |
+          for i in $(seq 1 ${{ steps.read_config.outputs.hello_value }})
+          do
+            echo "hello world"
+          done

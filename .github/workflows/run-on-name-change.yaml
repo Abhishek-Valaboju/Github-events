@@ -1,0 +1,30 @@
+name: Run on Name Change
+
+on:
+  push:
+    paths:
+      - name.txt
+
+jobs:
+  name-printing-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Read values from config file
+        id: read_config
+        run: |
+          hello_value=$(grep '^hello=' parameters.txt | cut -d '=' -f2)
+          echo "hello=$hello_value"
+          name_value=$(grep '^name=' name.txt | cut -d '=' -f2)
+          echo "name_value=$name_value" >> $GITHUB_OUTPUT
+          echo "hello_value=$hello_value" >> $GITHUB_OUTPUT
+
+      - name: Print hello with name
+        run: |
+          name=${{ steps.read_config.outputs.name_value }}
+          for i in $(seq 1 ${{ steps.read_config.outputs.hello_value }})
+          do
+            echo "hello $name"
+          done
