@@ -151,7 +151,7 @@ func webhookHandler(c *gin.Context) {
 		return
 	}
 
-	//fmt.Println("Raw Payload: ", string(body))
+	fmt.Println("Raw Payload: ", string(body))
 	var payload GitHubWebhookPayload
 
 	err = json.Unmarshal(body, &payload)
@@ -173,7 +173,7 @@ func webhookHandler(c *gin.Context) {
 			payload.Repository.FullName,
 		)
 		duration := payload.WorkflowJob.CompletedAt.Sub(payload.WorkflowJob.StartedAt).Seconds()
-		queuedDurationSeconds.WithLabelValues(payload.Repository.FullName, payload.WorkflowJob.Name).Observe(duration)
+		queuedDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(payload.WorkflowJob.RunID)).Observe(duration)
 	}
 	if payload.Action == "in_progress" {
 		fmt.Printf(" Action is in in_progress :  workflow_job.id  %v , run_id %v ,name %s ,Repo name %s",
@@ -188,6 +188,10 @@ func webhookHandler(c *gin.Context) {
 				step.Name, step.Status, step.Number)
 		}
 	}
+
+	var runIDToRunNumber = map[int]int{}
+	runIDToRunNumber[payload.WorkflowJob.RunID] = payload.WorkflowRun.RunNumber
+
 	if payload.Action == "completed" {
 		fmt.Printf(" Action is in completed :  workflow_job.id  %v , run_id %v ,name %s ,Repo name %s",
 			payload.WorkflowJob.ID,
@@ -232,9 +236,9 @@ func webhookHandler(c *gin.Context) {
 		workflow := job.RunID
 		status := job.Conclusion
 
-		if payload.Action == "completed" {
-			jobRunTotal.WithLabelValues(payload.Repository.FullName, strconv.Itoa(workflow), job.Name, status).Inc()
+		jobRunTotal.WithLabelValues(payload.Repository.FullName, strconv.Itoa(workflow), job.Name, status).Inc()
 
+		if payload.Action == "completed" {
 			duration := job.CompletedAt.Sub(job.StartedAt).Seconds()
 			jobDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(workflow), job.Name, status).Observe(duration)
 		}
@@ -249,12 +253,12 @@ func webhookHandler(c *gin.Context) {
 			stepRunTotal.WithLabelValues(payload.Repository.FullName, strconv.Itoa(workflow), job.Name, step.Name, step.Status).Inc()
 			if payload.Action == "completed" {
 				duration := step.CompletedAt.Sub(step.StartedAt).Seconds()
-				stepDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(workflow), job.Name, step.Name, step.Status).Observe(duration)
+				stepDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(workflow), job.Name, step.Name, step.Conclusion).Observe(duration)
 			}
 		}
 	}
 	if payload.WorkflowRun.ID != 0 {
-		fmt.Printf("\nJob ID: %d, Run ID: %d, Name: %s, Status: %s, Conclusion %s, StartAt %s UpdatedAt %s Repo: %s\n",
+		fmt.Printf("\nWorkflowRun Job ID: %d, Run ID: %d, Name: %s, Status: %s, Conclusion %s, StartAt %s UpdatedAt %s Repo: %s\n",
 			payload.WorkflowRun.ID,
 			payload.WorkflowRun.RunNumber,
 			payload.WorkflowRun.Name,
@@ -268,13 +272,17 @@ func webhookHandler(c *gin.Context) {
 		run := payload.WorkflowRun
 		runWorkflow := run.RunNumber
 		runStatus := run.Conclusion
-		if payload.Action == "completed" {
-			workflowRunTotal.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runWorkflow), runStatus).Inc()
+		workflowRunTotal.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runWorkflow), runStatus).Inc()
 
+		if payload.Action == "completed" {
 			duration := run.UpdatedAt.Sub(run.StartedAt).Seconds()
 			fmt.Println("duration : ", duration)
 			workflowDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runWorkflow), runStatus).Observe(duration)
 		}
+	}
+
+	for i, v := range runIDToRunNumber {
+		fmt.Println("runId : ", i, "runNumber : ", v)
 	}
 	c.String(http.StatusOK, "Event processed")
 }
