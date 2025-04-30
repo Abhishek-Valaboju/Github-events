@@ -204,7 +204,6 @@ func webhookHandler(c *gin.Context) {
 		runNumber = -1
 	}
 	cacheMu.Unlock()
-	fmt.Println("runNumber: ", runNumber)
 	if payload.Action == "queued" {
 		fmt.Printf(" Action is in Queued :  workflow_job.id  %v , run_id %v ,status %s ,name %s ,Repo name %v",
 			payload.WorkflowJob.ID,
@@ -318,9 +317,7 @@ func webhookHandler(c *gin.Context) {
 			workflowDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runWorkflow), runStatus).Observe(duration)
 		}
 	}
-	for i, v := range runIDCache {
-		fmt.Println("runID : ", i, " runNumber : ", v)
-	}
+
 	c.String(http.StatusOK, "Event processed")
 }
 
@@ -336,6 +333,11 @@ func main() {
 	r.GET("/metrics", metricsHandler)
 	r.GET("/readyness", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
+	})
+	r.GET("/get_number", func(c *gin.Context) {
+		for i, v := range runIDCache {
+			fmt.Println("runID : ", i, " runNumber : ", v)
+		}
 	})
 	r.Run(":8080") // listen and serve on 0.0.0.0:8080
 }
