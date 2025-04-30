@@ -201,7 +201,7 @@ func webhookHandler(c *gin.Context) {
 		runNumber = info.RunNumber
 		fmt.Println("runNumber : ", runNumber, " runID : ", payload.WorkflowJob.RunID)
 	} else {
-		runNumber = -1
+		runNumber = payload.WorkflowJob.RunID
 	}
 	cacheMu.Unlock()
 	if payload.Action == "queued" {
@@ -270,14 +270,14 @@ func webhookHandler(c *gin.Context) {
 		}
 
 		job := payload.WorkflowJob
-		workflow := job.RunID
+		//workflow := job.RunID
 		status := job.Conclusion
 
-		jobRunTotal.WithLabelValues(payload.Repository.FullName, strconv.Itoa(workflow), job.Name, status).Inc()
+		jobRunTotal.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runNumber), job.Name, status).Inc()
 
 		if payload.Action == "completed" {
 			duration := job.CompletedAt.Sub(job.StartedAt).Seconds()
-			jobDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(workflow), job.Name, status).Observe(duration)
+			jobDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runNumber), job.Name, status).Observe(duration)
 		}
 
 		if payload.Action == "in_progress" {
@@ -287,10 +287,10 @@ func webhookHandler(c *gin.Context) {
 		}
 
 		for _, step := range job.Steps {
-			stepRunTotal.WithLabelValues(payload.Repository.FullName, strconv.Itoa(workflow), job.Name, step.Name, step.Status).Inc()
+			stepRunTotal.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runNumber), job.Name, step.Name, step.Status).Inc()
 			if payload.Action == "completed" {
 				duration := step.CompletedAt.Sub(step.StartedAt).Seconds()
-				stepDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(workflow), job.Name, step.Name, step.Conclusion).Observe(duration)
+				stepDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runNumber), job.Name, step.Name, step.Conclusion).Observe(duration)
 			}
 		}
 	}
