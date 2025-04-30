@@ -20,7 +20,7 @@ type Repository struct {
 }
 
 type WorkflowRun struct {
-	ID         int64     `json:"id"`
+	ID         int       `json:"id"`
 	Name       string    `json:"name"`
 	Status     string    `json:"status"`
 	Conclusion string    `json:"conclusion"`
@@ -54,6 +54,10 @@ type GitHubWebhookPayload struct {
 	WorkflowRun WorkflowRun `json:"workflow_run,omitempty"`
 	WorkflowJob WorkflowJob `json:"workflow_job,omitempty"`
 	Repository  Repository  `json:"repository,omitempty"`
+}
+type RunInfo struct {
+	RunNumber int
+	TimeStamp time.Time
 }
 
 var (
@@ -127,6 +131,10 @@ var (
 		[]string{"repository", "runner_name"},
 	)
 	mu sync.Mutex
+
+	runIDCache = make(map[int]RunInfo)
+	cacheMu    sync.Mutex
+	cacheTTL   = 30 * time.Minute
 )
 
 func init() {
@@ -141,8 +149,21 @@ func init() {
 		queuedDurationSeconds,
 		runnersBusy,
 	)
+	go cacheCleaner()
 }
-
+func cacheCleaner() {
+	for {
+		time.Sleep(10 * time.Minute)
+		cacheMu.Lock()
+		now := time.Now()
+		for k, v := range runIDCache {
+			if now.Sub(v.TimeStamp) > cacheTTL {
+				delete(runIDCache, k)
+			}
+		}
+		cacheMu.Unlock()
+	}
+}
 func webhookHandler(c *gin.Context) {
 	fmt.Println("\n\n\n\n Running Webhook")
 	body, err := ioutil.ReadAll(c.Request.Body)
@@ -164,6 +185,26 @@ func webhookHandler(c *gin.Context) {
 	mu.Lock()
 	defer mu.Unlock()
 
+	if payload.WorkflowRun.ID != 0 {
+		cacheMu.Lock()
+		runIDCache[payload.WorkflowRun.ID] = RunInfo{
+			RunNumber: payload.WorkflowRun.RunNumber,
+			TimeStamp: time.Now(),
+		}
+		cacheMu.Unlock()
+	}
+
+	var runNumber int
+
+	cacheMu.Lock()
+	if info, ok := runIDCache[payload.WorkflowJob.RunID]; ok {
+		runNumber = info.RunNumber
+		fmt.Println("runNumber : ", runNumber, " runID : ", payload.WorkflowJob.RunID)
+	} else {
+		runNumber = -1
+	}
+	cacheMu.Unlock()
+	fmt.Println("runNumber: ", runNumber)
 	if payload.Action == "queued" {
 		fmt.Printf(" Action is in Queued :  workflow_job.id  %v , run_id %v ,status %s ,name %s ,Repo name %v",
 			payload.WorkflowJob.ID,
@@ -188,9 +229,6 @@ func webhookHandler(c *gin.Context) {
 				step.Name, step.Status, step.Number)
 		}
 	}
-
-	var runIDToRunNumber = map[int]int{}
-	runIDToRunNumber[payload.WorkflowJob.RunID] = payload.WorkflowRun.RunNumber
 
 	if payload.Action == "completed" {
 		fmt.Printf(" Action is in completed :  workflow_job.id  %v , run_id %v ,name %s ,Repo name %s",
@@ -280,9 +318,8 @@ func webhookHandler(c *gin.Context) {
 			workflowDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runWorkflow), runStatus).Observe(duration)
 		}
 	}
-
-	for i, v := range runIDToRunNumber {
-		fmt.Println("runId : ", i, "runNumber : ", v)
+	for i, v := range runIDCache {
+		fmt.Println("runID : ", i, " runNumber : ", v)
 	}
 	c.String(http.StatusOK, "Event processed")
 }
