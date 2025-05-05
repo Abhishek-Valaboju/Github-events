@@ -335,8 +335,13 @@ func main() {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 	r.GET("/get_number", func(c *gin.Context) {
-		for i, v := range runIDCache {
-			fmt.Println("runID : ", i, " runNumber : ", v)
+		if len(runIDCache) != 0 {
+			for i, v := range runIDCache {
+				fmt.Println("runID : ", i, " runNumber : ", v)
+				c.JSON(http.StatusOK, gin.H{"runID : ": i, " runNumber : ": v})
+			}
+		} else {
+			c.Status(http.StatusNoContent)
 		}
 	})
 	r.Run(":8080") // listen and serve on 0.0.0.0:8080
