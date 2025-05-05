@@ -337,7 +337,7 @@ func main() {
 	r.GET("/get_number", func(c *gin.Context) {
 		if len(runIDCache) != 0 {
 			for i, v := range runIDCache {
-				fmt.Println("runID : ", i, " runNumber : ", v)
+				fmt.Println("runID : ", i, " run Number : ", v)
 				c.JSON(http.StatusOK, gin.H{"runID : ": i, " runNumber : ": v})
 			}
 		} else {
