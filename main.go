@@ -217,6 +217,7 @@ func webhookHandler(c *gin.Context) {
 
 	mu.Lock()
 	defer mu.Unlock()
+	fmt.Println("updated at : ", payload.WorkflowRun.UpdatedAt, " completed at : ", payload.WorkflowJob.CompletedAt)
 
 	cutoff := time.Now().Add(-7 * 24 * time.Hour)
 	if payload.WorkflowRun.UpdatedAt.Before(cutoff) || payload.WorkflowJob.CompletedAt.Before(cutoff) {
