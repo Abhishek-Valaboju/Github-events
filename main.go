@@ -220,7 +220,7 @@ func webhookHandler(c *gin.Context) {
 
 	cutoff := time.Now().Add(-7 * 24 * time.Hour)
 	if payload.WorkflowRun.UpdatedAt.Before(cutoff) || payload.WorkflowJob.CompletedAt.Before(cutoff) {
-		fmt.Println("Discarding event older than 7 days")
+		fmt.Println("Discarding event older than 7 days updated at : ", payload.WorkflowRun.UpdatedAt, " completed at : ", payload.WorkflowJob.CompletedAt)
 		c.Status(http.StatusNoContent)
 		return
 	}
