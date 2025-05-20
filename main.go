@@ -205,7 +205,7 @@ func webhookHandler(c *gin.Context) {
 		return
 	}
 
-	fmt.Println("Raw Payload: ", string(body))
+	//fmt.Println("Raw Payload: ", string(body))
 	var payload GitHubWebhookPayload
 
 	err = json.Unmarshal(body, &payload)
