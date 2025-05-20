@@ -220,11 +220,14 @@ func webhookHandler(c *gin.Context) {
 	fmt.Println("updated at : ", payload.WorkflowRun.UpdatedAt, " completed at : ", payload.WorkflowJob.CompletedAt)
 
 	cutoff := time.Now().Add(-7 * 24 * time.Hour)
-	if payload.WorkflowRun.UpdatedAt.Before(cutoff) || payload.WorkflowJob.CompletedAt.Before(cutoff) {
-		fmt.Println("Discarding event older than 7 days updated at : ", payload.WorkflowRun.UpdatedAt, " completed at : ", payload.WorkflowJob.CompletedAt)
+
+	if (payload.WorkflowJob.ID != 0 && !payload.WorkflowJob.CompletedAt.IsZero() && payload.WorkflowJob.CompletedAt.Before(cutoff)) ||
+		(payload.WorkflowRun.ID != 0 && !payload.WorkflowRun.UpdatedAt.IsZero() && payload.WorkflowRun.UpdatedAt.Before(cutoff)) {
+		fmt.Println("Discarding WorkflowJob event older than 7 days. CompletedAt : ", payload.WorkflowJob.CompletedAt, " updated at : ", payload.WorkflowRun.UpdatedAt)
 		c.Status(http.StatusNoContent)
 		return
 	}
+
 	if payload.WorkflowRun.ID != 0 {
 		cacheMu.Lock()
 		runIDCache[payload.WorkflowRun.ID] = RunInfo{
