@@ -319,7 +319,7 @@ func webhookHandler(c *gin.Context) {
 
 		if payload.Action == "completed" {
 			duration := job.CompletedAt.Sub(job.StartedAt).Seconds()
-			jobDuration.WithLabelValues(strconv.Itoa(job.ID), strconv.Itoa(runNumber), payload.Repository.FullName).Set(duration)
+			jobDuration.WithLabelValues(strconv.Itoa(job.ID), strconv.Itoa(runNumber), job.Name, payload.Repository.FullName).Set(duration)
 		}
 
 		status := 0.0
