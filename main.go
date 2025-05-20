@@ -90,13 +90,13 @@ var (
 		},
 		[]string{"repository", "workflow"},
 	)
-	workflowDurationSeconds = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "github_actions_workflow_duration_seconds",
-			Help:    "Duration of completed workflow runs",
-			Buckets: prometheus.DefBuckets,
+
+	workflowRunDuration = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "github_actions_workflow_run_duration",
+			Help: "Duration of the workflow run in seconds",
 		},
-		[]string{"repository", "workflow", "status"},
+		[]string{"id", "workflow", "repository"},
 	)
 
 	jobRunTotal = prometheus.NewCounterVec(
@@ -115,14 +115,12 @@ var (
 		[]string{"id", "workflow", "job_name", "repository"},
 	)
 
-	jobDurationSeconds = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "github_actions_job_duration_seconds",
-			Help: "Duration of each job in seconds",
-			//Buckets: prometheus.DefBuckets,
-			Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+	jobDuration = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "github_actions_job_run_duration",
+			Help: "Job run duration in seconds",
 		},
-		[]string{"repository", "workflow", "job", "status"},
+		[]string{"id", "workflow", "job_name", "repository"},
 	)
 
 	stepRunTotal = prometheus.NewCounterVec(
@@ -173,9 +171,9 @@ func init() {
 		workflowRunTotal,
 		workflowRunCountSuccess,
 		workflowRunCountFailed,
-		workflowDurationSeconds,
+		workflowRunDuration,
 		jobRunTotal,
-		jobDurationSeconds,
+		jobDuration,
 		stepRunTotal,
 		stepDurationSeconds,
 		queuedDurationSeconds,
@@ -321,7 +319,7 @@ func webhookHandler(c *gin.Context) {
 
 		if payload.Action == "completed" {
 			duration := job.CompletedAt.Sub(job.StartedAt).Seconds()
-			jobDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runNumber), job.Name, jobstatus).Observe(duration)
+			jobDuration.WithLabelValues(strconv.Itoa(job.ID), strconv.Itoa(runNumber), payload.Repository.FullName).Set(duration)
 		}
 
 		status := 0.0
@@ -372,7 +370,7 @@ func webhookHandler(c *gin.Context) {
 		if payload.Action == "completed" {
 			duration := run.UpdatedAt.Sub(run.StartedAt).Seconds()
 			fmt.Println("duration : ", duration)
-			workflowDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runWorkflow), runStatus).Observe(duration)
+			workflowRunDuration.WithLabelValues(strconv.Itoa(run.ID), strconv.Itoa(runWorkflow), payload.Repository.FullName).Set(duration)
 		}
 		status := 0.0
 		if payload.Action == "in_progress" {
