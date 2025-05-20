@@ -39,7 +39,7 @@ type Step struct {
 }
 
 type WorkflowJob struct {
-	ID          int64     `json:"id"`
+	ID          int       `json:"id"`
 	RunID       int       `json:"run_id"`
 	Name        string    `json:"name"`
 	Status      string    `json:"status"`
@@ -61,14 +61,35 @@ type RunInfo struct {
 }
 
 var (
+	workflowStatus = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "github_actions_workflow_status",
+			Help: "Latest status of workflow runs (1=active, 0=inactive)",
+		},
+		[]string{"id", "workflow", "repository"},
+	)
+
 	workflowRunTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "github_actions_workflow_run_total",
-			Help: "Total number of workflow runs per repository and status",
+			Help: "Total number of workflow runs per repository",
 		},
-		[]string{"repository", "workflow", "status"},
+		[]string{"repository", "workflow"},
 	)
-
+	workflowRunCountSuccess = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "github_actions_workflow_run_count_success",
+			Help: "Total number of success workflow runs",
+		},
+		[]string{"repository", "workflow"},
+	)
+	workflowRunCountFailed = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "github_actions_workflow_run_count_failed",
+			Help: "Total number of failed workflow runs",
+		},
+		[]string{"repository", "workflow"},
+	)
 	workflowDurationSeconds = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "github_actions_workflow_duration_seconds",
@@ -84,6 +105,14 @@ var (
 			Help: "Total number of jobs run within workflows",
 		},
 		[]string{"repository", "workflow", "job", "status"},
+	)
+
+	jobStatus = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "github_actions_job_status",
+			Help: "Latest status of a job (1=active, 0=inactive)",
+		},
+		[]string{"id", "workflow", "job_name", "repository"},
 	)
 
 	jobDurationSeconds = prometheus.NewHistogramVec(
@@ -140,7 +169,10 @@ var (
 func init() {
 	// Register Prometheus metrics
 	prometheus.MustRegister(
+		workflowStatus,
 		workflowRunTotal,
+		workflowRunCountSuccess,
+		workflowRunCountFailed,
 		workflowDurationSeconds,
 		jobRunTotal,
 		jobDurationSeconds,
@@ -148,6 +180,7 @@ func init() {
 		stepDurationSeconds,
 		queuedDurationSeconds,
 		runnersBusy,
+		jobStatus,
 	)
 	go cacheCleaner()
 }
@@ -185,6 +218,12 @@ func webhookHandler(c *gin.Context) {
 	mu.Lock()
 	defer mu.Unlock()
 
+	cutoff := time.Now().Add(-7 * 24 * time.Hour)
+	if payload.WorkflowRun.UpdatedAt.Before(cutoff) || payload.WorkflowJob.CompletedAt.Before(cutoff) {
+		fmt.Println("Discarding event older than 7 days")
+		c.Status(http.StatusNoContent)
+		return
+	}
 	if payload.WorkflowRun.ID != 0 {
 		cacheMu.Lock()
 		runIDCache[payload.WorkflowRun.ID] = RunInfo{
@@ -204,55 +243,57 @@ func webhookHandler(c *gin.Context) {
 		runNumber = payload.WorkflowJob.RunID
 	}
 	cacheMu.Unlock()
-	if payload.Action == "queued" {
-		fmt.Printf(" Action is in Queued :  workflow_job.id  %v , run_id %v ,status %s ,name %s ,Repo name %v",
-			payload.WorkflowJob.ID,
-			payload.WorkflowJob.RunID,
-			payload.WorkflowJob.Status,
-			payload.WorkflowJob.Name,
-			payload.Repository.FullName,
-		)
-		duration := payload.WorkflowJob.CompletedAt.Sub(payload.WorkflowJob.StartedAt).Seconds()
-		queuedDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(payload.WorkflowJob.RunID)).Observe(duration)
-	}
-	if payload.Action == "in_progress" {
-		fmt.Printf(" Action is in in_progress :  workflow_job.id  %v , run_id %v ,name %s ,Repo name %s",
-			payload.WorkflowJob.ID,
-			payload.WorkflowJob.RunID,
-			//payload.WorkflowJob.Status,
-			payload.WorkflowJob.Name,
-			payload.Repository.FullName,
-		)
-		for _, step := range payload.WorkflowJob.Steps {
-			fmt.Printf("  Step: %s | Status: %s | Number: %d\n",
-				step.Name, step.Status, step.Number)
-		}
-	}
 
-	if payload.Action == "completed" {
-		fmt.Printf(" Action is in completed :  workflow_job.id  %v , run_id %v ,name %s ,Repo name %s",
-			payload.WorkflowJob.ID,
-			payload.WorkflowJob.RunID,
-			payload.WorkflowJob.Name,
-			payload.Repository.FullName,
-		)
-		for _, step := range payload.WorkflowJob.Steps {
-			fmt.Printf("  Step: %s | Status: %s | Conclusion %s | started_at %v | Completed_at: %d\n",
-				step.Name, step.Status, step.Conclusion, step.StartedAt, step.CompletedAt)
-		}
+	//if payload.Action == "queued" {
+	//	fmt.Printf(" Action is in Queued :  workflow_job.id  %v , run_id %v ,status %s ,name %s ,Repo name %v",
+	//		payload.WorkflowJob.ID,
+	//		payload.WorkflowJob.RunID,
+	//		payload.WorkflowJob.Status,
+	//		payload.WorkflowJob.Name,
+	//		payload.Repository.FullName,
+	//	)
+	//	duration := payload.WorkflowJob.CompletedAt.Sub(payload.WorkflowJob.StartedAt).Seconds()
+	//	queuedDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(payload.WorkflowJob.RunID)).Observe(duration)
+	//}
+	//if payload.Action == "in_progress" {
+	//	fmt.Printf(" Action is in in_progress :  workflow_job.id  %v , run_id %v ,name %s ,Repo name %s",
+	//		payload.WorkflowJob.ID,
+	//		payload.WorkflowJob.RunID,
+	//		//payload.WorkflowJob.Status,
+	//		payload.WorkflowJob.Name,
+	//		payload.Repository.FullName,
+	//	)
+	//	for _, step := range payload.WorkflowJob.Steps {
+	//		fmt.Printf("  Step: %s | Status: %s | Number: %d\n",
+	//			step.Name, step.Status, step.Number)
+	//	}
+	//}
 
-		fmt.Printf("\nWorkflowRun Job ID: %d, Run ID: %d, Name: %s, Status: %s, Conclusion %s, StartAt %s UpdatedAt %s Repo: %s\n",
-			payload.WorkflowRun.ID,
-			payload.WorkflowRun.RunNumber,
-			payload.WorkflowRun.Name,
-			payload.WorkflowRun.Status,
-			payload.WorkflowRun.Conclusion,
-			payload.WorkflowRun.StartedAt,
-			payload.WorkflowRun.UpdatedAt,
-			payload.Repository.FullName,
-		)
-	}
+	//if payload.Action == "completed" {
+	//	fmt.Printf(" Action is in completed :  workflow_job.id  %v , run_id %v ,name %s ,Repo name %s",
+	//		payload.WorkflowJob.ID,
+	//		payload.WorkflowJob.RunID,
+	//		payload.WorkflowJob.Name,
+	//		payload.Repository.FullName,
+	//	)
+	//	for _, step := range payload.WorkflowJob.Steps {
+	//		fmt.Printf("  Step: %s | Status: %s | Conclusion %s | started_at %v | Completed_at: %d\n",
+	//			step.Name, step.Status, step.Conclusion, step.StartedAt, step.CompletedAt)
+	//	}
+	//
+	//	fmt.Printf("\nWorkflowRun Job ID: %d, Run ID: %d, Name: %s, Status: %s, Conclusion %s, StartAt %s UpdatedAt %s Repo: %s\n",
+	//		payload.WorkflowRun.ID,
+	//		payload.WorkflowRun.RunNumber,
+	//		payload.WorkflowRun.Name,
+	//		payload.WorkflowRun.Status,
+	//		payload.WorkflowRun.Conclusion,
+	//		payload.WorkflowRun.StartedAt,
+	//		payload.WorkflowRun.UpdatedAt,
+	//		payload.Repository.FullName,
+	//	)
+	//}
 
+	//sending metrics
 	if payload.WorkflowJob.ID != 0 {
 		fmt.Printf("\nJob ID: %d, Run ID: %d, Name: %s, Status: %s, Repo: %s\n",
 			payload.WorkflowJob.ID,
@@ -270,21 +311,24 @@ func webhookHandler(c *gin.Context) {
 		}
 
 		job := payload.WorkflowJob
-		//workflow := job.RunID
-		status := job.Conclusion
+		jobstatus := job.Conclusion
 
-		jobRunTotal.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runNumber), job.Name, status).Inc()
+		jobRunTotal.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runNumber), job.Name, jobstatus).Inc()
 
 		if payload.Action == "completed" {
 			duration := job.CompletedAt.Sub(job.StartedAt).Seconds()
-			jobDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runNumber), job.Name, status).Observe(duration)
+			jobDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runNumber), job.Name, jobstatus).Observe(duration)
 		}
 
+		status := 0.0
 		if payload.Action == "in_progress" {
+			status = 1.0
 			runnersBusy.WithLabelValues(payload.Repository.FullName, job.Name).Set(1)
 		} else if payload.Action == "completed" {
 			runnersBusy.WithLabelValues(payload.Repository.FullName, job.Name).Set(0)
 		}
+
+		jobStatus.WithLabelValues(strconv.Itoa(job.ID), strconv.Itoa(runNumber), job.Name, payload.Repository.FullName).Set(status)
 
 		for _, step := range job.Steps {
 			stepRunTotal.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runNumber), job.Name, step.Name, step.Status).Inc()
@@ -294,6 +338,7 @@ func webhookHandler(c *gin.Context) {
 			}
 		}
 	}
+
 	if payload.WorkflowRun.ID != 0 {
 		fmt.Printf("\nWorkflowRun Job ID: %d, Run ID: %d, Name: %s, Status: %s, Conclusion %s, StartAt %s UpdatedAt %s Repo: %s\n",
 			payload.WorkflowRun.ID,
@@ -309,13 +354,27 @@ func webhookHandler(c *gin.Context) {
 		run := payload.WorkflowRun
 		runWorkflow := run.RunNumber
 		runStatus := run.Conclusion
-		workflowRunTotal.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runWorkflow), runStatus).Inc()
+
+		//workflow run total count
+		workflowRunTotal.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runWorkflow)).Inc()
+
+		//workflow run success and failure counters
+		if runStatus == "success" {
+			workflowRunCountSuccess.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runWorkflow)).Inc()
+		} else if runStatus == "failure" {
+			workflowRunCountFailed.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runWorkflow)).Inc()
+		}
 
 		if payload.Action == "completed" {
 			duration := run.UpdatedAt.Sub(run.StartedAt).Seconds()
 			fmt.Println("duration : ", duration)
 			workflowDurationSeconds.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runWorkflow), runStatus).Observe(duration)
 		}
+		status := 0.0
+		if payload.Action == "in_progress" {
+			status = 1.0
+		}
+		workflowStatus.WithLabelValues(strconv.Itoa(run.ID), strconv.Itoa(runWorkflow), payload.Repository.FullName).Set(status)
 	}
 
 	c.String(http.StatusOK, "Event processed")
@@ -344,5 +403,5 @@ func main() {
 			c.Status(http.StatusNoContent)
 		}
 	})
-	r.Run(":8080") // listen and serve on 0.0.0.0:8080
+	r.Run(":8080")
 }
