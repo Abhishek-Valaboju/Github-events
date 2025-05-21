@@ -71,14 +71,14 @@ var (
 
 	workflowRunTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "github_actions_workflow_run_total",
+			Name: "github_actions_workflow_run_count",
 			Help: "Total number of workflow runs per repository",
 		},
 		[]string{"repository", "workflow"},
 	)
 	workflowRunCountSuccess = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "github_actions_workflow_run_count",
+			Name: "github_actions_workflow_run_count_success",
 			Help: "Total number of success workflow runs",
 		},
 		[]string{"repository", "workflow"},
@@ -323,7 +323,6 @@ func webhookHandler(c *gin.Context) {
 		}
 
 		status := 0.0
-
 		if payload.Action == "in_progress" {
 			status = 1.0
 			runnersBusy.WithLabelValues(payload.Repository.FullName, job.Name).Set(1)
