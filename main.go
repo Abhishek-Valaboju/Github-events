@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -198,6 +199,43 @@ func cacheCleaner() {
 		cacheMu.Unlock()
 	}
 }
+
+type ForRunNumber struct {
+	Id        int    `json:"id"`
+	RunNumber string `json:"run_number"`
+}
+
+func fetchRunNumber(runID int, token string) (ForRunNumber, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/Abhishek-Valaboju/Github-events/actions/runs/%d", runID)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return ForRunNumber{}, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "go-github-client")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return ForRunNumber{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return ForRunNumber{}, fmt.Errorf("GitHub API error: %s\n%s", resp.Status, string(body))
+	}
+
+	var run ForRunNumber
+	if err := json.NewDecoder(resp.Body).Decode(&run); err != nil {
+		return ForRunNumber{}, err
+	}
+
+	return run, nil
+}
 func webhookHandler(c *gin.Context) {
 	fmt.Println("\n\n\n\n Running Webhook")
 	body, err := ioutil.ReadAll(c.Request.Body)
@@ -248,7 +286,11 @@ func webhookHandler(c *gin.Context) {
 		runNumber = payload.WorkflowJob.RunID
 	}
 	cacheMu.Unlock()
-
+	run_number, err := fetchRunNumber(payload.WorkflowJob.RunID, "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")
+	if err != nil {
+		fmt.Println("Error fetching run number : ", err)
+	}
+	fmt.Println("run_number : ", run_number)
 	//if payload.Action == "queued" {
 	//	fmt.Printf(" Action is in Queued :  workflow_job.id  %v , run_id %v ,status %s ,name %s ,Repo name %v",
 	//		payload.WorkflowJob.ID,
