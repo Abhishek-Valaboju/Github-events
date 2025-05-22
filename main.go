@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -205,9 +206,9 @@ type ForRunNumber struct {
 	RunNumber string `json:"run_number"`
 }
 
-func fetchRunNumber(runID int, token string) (ForRunNumber, error) {
+func fetchRunNumber(runID int) (ForRunNumber, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/Abhishek-Valaboju/Github-events/actions/runs/%d", runID)
-
+	token := os.Getenv("GITHUB_TOKEN")
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return ForRunNumber{}, err
@@ -286,7 +287,7 @@ func webhookHandler(c *gin.Context) {
 		runNumber = payload.WorkflowJob.RunID
 	}
 	cacheMu.Unlock()
-	run_number, err := fetchRunNumber(payload.WorkflowJob.RunID, "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")
+	run_number, err := fetchRunNumber(payload.WorkflowJob.RunID)
 	if err != nil {
 		fmt.Println("Error fetching run number : ", err)
 	}
@@ -456,6 +457,9 @@ func metricsHandler(c *gin.Context) {
 }
 
 func main() {
+
+	token := os.Getenv("GITHUB_TOKEN")
+	fmt.Println("token : ", token)
 	r := gin.Default()
 
 	r.POST("/webhook", webhookHandler)
