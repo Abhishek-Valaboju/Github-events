@@ -191,6 +191,7 @@ func cacheCleaner() {
 		now := time.Now()
 		for k, v := range runIDCache {
 			if now.Sub(v.TimeStamp) > cacheTTL {
+				fmt.Println("deleting cache : ", runIDCache)
 				delete(runIDCache, k)
 			}
 		}
