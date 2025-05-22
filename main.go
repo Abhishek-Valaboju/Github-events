@@ -76,6 +76,7 @@ var (
 		},
 		[]string{"repository", "workflow"},
 	)
+	//github_actions_workflow_run_count_success
 	workflowRunCountSuccess = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "github_actions_workflow_run_count_success",
