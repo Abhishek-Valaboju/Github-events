@@ -362,9 +362,10 @@ func webhookHandler(c *gin.Context) {
 
 		//workflow run success and failure counters
 		if runStatus == "success" {
-			workflowRunCountSuccess.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runWorkflow)).Inc()
+			//workflowRunCountSuccess.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runWorkflow)).Inc()
+			workflowRunCountSuccess.WithLabelValues(payload.Repository.FullName, run.Name).Inc()
 		} else if runStatus == "failure" {
-			workflowRunCountFailed.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runWorkflow)).Inc()
+			workflowRunCountFailed.WithLabelValues(payload.Repository.FullName, run.Name).Inc()
 		}
 
 		if payload.Action == "completed" {
