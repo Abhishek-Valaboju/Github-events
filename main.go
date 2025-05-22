@@ -204,7 +204,7 @@ func webhookHandler(c *gin.Context) {
 		return
 	}
 
-	//fmt.Println("Raw Payload: ", string(body))
+	fmt.Println("Raw Payload: ", string(body))
 	var payload GitHubWebhookPayload
 
 	err = json.Unmarshal(body, &payload)
@@ -374,9 +374,16 @@ func webhookHandler(c *gin.Context) {
 			fmt.Println("duration : ", duration)
 			workflowRunDuration.WithLabelValues(strconv.Itoa(run.ID), strconv.Itoa(runWorkflow), payload.Repository.FullName).Set(duration)
 		}
+
 		status := 0.0
 		if payload.Action == "in_progress" {
 			status = 1.0
+		} else if payload.Action == "completed" {
+			if runStatus == "success" {
+				status = 1.0
+			} else if runStatus == "failure" {
+				status = 2.0
+			}
 		}
 		workflowStatus.WithLabelValues(strconv.Itoa(run.ID), strconv.Itoa(runWorkflow), payload.Repository.FullName).Set(status)
 	}
