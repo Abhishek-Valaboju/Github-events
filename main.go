@@ -212,7 +212,7 @@ func fetchRunNumber(runID int) (ForRunNumber, error) {
 	url := getUrl + strconv.Itoa(runID)
 	//url := fmt.Sprintf("https://api.github.com/repos/Abhishek-Valaboju/Github-events/actions/runs/%d", runID)
 	token := os.Getenv("GITHUB_TOKEN")
-	fmt.Println("getUrl : ", getUrl)
+	fmt.Println("url : ", url)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return ForRunNumber{}, err
