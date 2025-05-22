@@ -39,14 +39,15 @@ type Step struct {
 }
 
 type WorkflowJob struct {
-	ID          int       `json:"id"`
-	RunID       int       `json:"run_id"`
-	Name        string    `json:"name"`
-	Status      string    `json:"status"`
-	Conclusion  string    `json:"conclusion,omitempty"`
-	StartedAt   time.Time `json:"started_at,omitempty"`
-	CompletedAt time.Time `json:"completed_at,omitempty"`
-	Steps       []Step    `json:"steps,omitempty"`
+	ID           int       `json:"id"`
+	RunID        int       `json:"run_id"`
+	Name         string    `json:"name"`
+	WorkFlowName string    `json:"workflow_name"`
+	Status       string    `json:"status"`
+	Conclusion   string    `json:"conclusion,omitempty"`
+	StartedAt    time.Time `json:"started_at,omitempty"`
+	CompletedAt  time.Time `json:"completed_at,omitempty"`
+	Steps        []Step    `json:"steps,omitempty"`
 }
 
 type GitHubWebhookPayload struct {
@@ -315,7 +316,7 @@ func webhookHandler(c *gin.Context) {
 
 		job := payload.WorkflowJob
 		jobstatus := job.Conclusion
-
+		workFlowName := job.WorkFlowName
 		jobRunTotal.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runNumber), job.Name, jobstatus).Inc()
 
 		if payload.Action == "completed" {
@@ -323,15 +324,27 @@ func webhookHandler(c *gin.Context) {
 			jobDuration.WithLabelValues(strconv.Itoa(job.ID), strconv.Itoa(runNumber), job.Name, payload.Repository.FullName).Set(duration)
 		}
 
-		status := 0.0
 		if payload.Action == "in_progress" {
-			status = 1.0
 			runnersBusy.WithLabelValues(payload.Repository.FullName, job.Name).Set(1)
 		} else if payload.Action == "completed" {
 			runnersBusy.WithLabelValues(payload.Repository.FullName, job.Name).Set(0)
 		}
 
-		jobStatus.WithLabelValues(strconv.Itoa(job.ID), strconv.Itoa(runNumber), job.Name, payload.Repository.FullName).Set(status)
+		status := 0.0
+
+		if payload.Action == "queued" {
+			status = 0.0
+		} else if payload.Action == "in_progress" {
+			status = 0.5
+		} else if payload.Action == "completed" {
+			if jobstatus == "success" {
+				status = 1.0
+			} else if jobstatus == "failure" {
+				status = 2.0
+			}
+		}
+
+		jobStatus.WithLabelValues(strconv.Itoa(runNumber), workFlowName, job.Name, payload.Repository.FullName).Set(status)
 
 		for _, step := range job.Steps {
 			stepRunTotal.WithLabelValues(payload.Repository.FullName, strconv.Itoa(runNumber), job.Name, step.Name, step.Status).Inc()
@@ -376,8 +389,11 @@ func webhookHandler(c *gin.Context) {
 		}
 
 		status := 0.0
-		if payload.Action == "in_progress" {
-			status = 1.0
+
+		if payload.Action == "requested" {
+			status = 0.0
+		} else if payload.Action == "in_progress" {
+			status = 0.5
 		} else if payload.Action == "completed" {
 			if runStatus == "success" {
 				status = 1.0
@@ -385,7 +401,7 @@ func webhookHandler(c *gin.Context) {
 				status = 2.0
 			}
 		}
-		workflowStatus.WithLabelValues(strconv.Itoa(run.ID), strconv.Itoa(runWorkflow), payload.Repository.FullName).Set(status)
+		workflowStatus.WithLabelValues(strconv.Itoa(runWorkflow), run.Name, payload.Repository.FullName).Set(status)
 	}
 
 	c.String(http.StatusOK, "Event processed")
