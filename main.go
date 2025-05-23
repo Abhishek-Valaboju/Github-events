@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -202,17 +203,17 @@ func cacheCleaner() {
 }
 
 type ForRunNumber struct {
-	Id        int    `json:"id"`
-	RunNumber string `json:"run_number"`
+	Id        int `json:"id"`
+	RunNumber int `json:"run_number"`
 }
 
 func fetchRunNumber(runID int) (ForRunNumber, error) {
 
 	getUrl := os.Getenv("URL")
 	url := getUrl + strconv.Itoa(runID)
-
 	token := os.Getenv("GITHUB_TOKEN")
-	fmt.Println("url : ", url)
+	fmt.Println("url : ", url, token)
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return ForRunNumber{}, err
@@ -228,16 +229,23 @@ func fetchRunNumber(runID int) (ForRunNumber, error) {
 		return ForRunNumber{}, err
 	}
 	defer resp.Body.Close()
-
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("error in read : ", err)
+		return ForRunNumber{}, err
+	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
 		return ForRunNumber{}, fmt.Errorf("GitHub API error: %s\n%s", resp.Status, string(body))
 	}
 
 	var run ForRunNumber
-	if err := json.NewDecoder(resp.Body).Decode(&run); err != nil {
+
+	if err := json.Unmarshal(body, &run); err != nil {
+		log.Fatalf("Failed to unmarshal JSON: %v", err)
 		return ForRunNumber{}, err
 	}
+	fmt.Printf("Workflow Run ID: %d\n", run.Id)
+	fmt.Printf("Status: %d\n", run.RunNumber)
 
 	return run, nil
 }
@@ -288,14 +296,16 @@ func webhookHandler(c *gin.Context) {
 		runNumber = info.RunNumber
 		fmt.Println("runNumber : ", runNumber, " runID : ", payload.WorkflowJob.RunID)
 	} else {
-		runNumber = payload.WorkflowJob.RunID
+		gitHubApiData, err := fetchRunNumber(payload.WorkflowJob.RunID)
+		if err != nil {
+			fmt.Println("Error fetching run number : ", err)
+		}
+		fmt.Println("run_number : ", gitHubApiData)
+		runNumber = gitHubApiData.RunNumber
+		//runNumber = payload.WorkflowJob.RunID
 	}
 	cacheMu.Unlock()
-	run_number, err := fetchRunNumber(payload.WorkflowJob.RunID)
-	if err != nil {
-		fmt.Println("Error fetching run number : ", err)
-	}
-	fmt.Println("run_number : ", run_number)
+
 	//if payload.Action == "queued" {
 	//	fmt.Printf(" Action is in Queued :  workflow_job.id  %v , run_id %v ,status %s ,name %s ,Repo name %v",
 	//		payload.WorkflowJob.ID,
@@ -464,6 +474,12 @@ func main() {
 
 	token := os.Getenv("GITHUB_TOKEN")
 	fmt.Println("token : ", token)
+
+	run, err := fetchRunNumber(15181784557)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println("run : ", run)
 	r := gin.Default()
 
 	r.POST("/webhook", webhookHandler)
